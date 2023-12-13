@@ -11,13 +11,13 @@ from src.pieces.pawn import Pawn
 
 
 def load_pieces():
-    """Loads piece images"""
+    """Loads piece images with high quality"""
     pieces = {}
     piece_types = ["bishop", "king", "knight", "pawn", "queen", "rook"]
     colors = ["BLACK", "WHITE"]
     
-    # Calculate piece size slightly smaller than square size for better fit
-    piece_size = int(SQUARE_SIZE * 0.85)  # Using 85% of square size
+    # Calculate piece size based on square size and scale factor
+    piece_size = int(SQUARE_SIZE * PIECE_SCALE)
 
     for color in colors:
         for piece_type in piece_types:
@@ -25,8 +25,12 @@ def load_pieces():
             path = os.path.join("assets", "images", "pieces", filename)
 
             try:
+                # Load SVG at a larger size first for better quality
+                temp_size = piece_size * 2  # Load at 2x size initially
                 image = pygame.image.load(path)
-                image = pygame.transform.scale(image, (piece_size, piece_size))
+                image = pygame.transform.smoothscale(image, (temp_size, temp_size))
+                # Then scale down to desired size for better anti-aliasing
+                image = pygame.transform.smoothscale(image, (piece_size, piece_size))
                 pieces[f"{color.lower()}_{piece_type}"] = image
             except pygame.error as e:
                 print(f"Error: Could not load {filename} - {e}")
