@@ -1,48 +1,71 @@
 import os
 from config.settings import *
 import pygame
+from src.pieces.piece import Piece
+from src.pieces.rook import Rook
+from src.pieces.knight import Knight
+from src.pieces.bishop import Bishop
+from src.pieces.queen import Queen
+from src.pieces.king import King
+from src.pieces.pawn import Pawn
 
 
 def load_pieces():
-    """Taş görsellerini yükler"""
+    """Loads piece images"""
     pieces = {}
-    piece_types = ['bishop', 'king', 'knight', 'pawn', 'queen', 'rook']
-    colors = ['BLACK', 'WHITE']
+    piece_types = ["bishop", "king", "knight", "pawn", "queen", "rook"]
+    colors = ["BLACK", "WHITE"]
+    
+    # Calculate piece size slightly smaller than square size for better fit
+    piece_size = int(SQUARE_SIZE * 0.85)  # Using 85% of square size
 
     for color in colors:
         for piece_type in piece_types:
-            # Dosya adını oluştur (örn: "BLACK-bishop.svg")
             filename = f"{color}-{piece_type}.svg"
-            path = os.path.join('assets', 'images', 'pieces', filename)
+            path = os.path.join("assets", "images", "pieces", filename)
 
             try:
-                # SVG dosyasını yükle ve boyutlandır
                 image = pygame.image.load(path)
-                image = pygame.transform.scale(image, (SQUARE_SIZE, SQUARE_SIZE))
-                # Sözlükte sakla (örn: pieces['black_bishop'])
+                image = pygame.transform.scale(image, (piece_size, piece_size))
                 pieces[f"{color.lower()}_{piece_type}"] = image
             except pygame.error as e:
-                print(f"Hata: {filename} yüklenemedi - {e}")
+                print(f"Error: Could not load {filename} - {e}")
 
     return pieces
 
 
 def create_board():
-    """Başlangıç pozisyonunda bir satranç tahtası oluşturur"""
+    """Creates a chess board in starting position"""
     board = [[None for _ in range(8)] for _ in range(8)]
+    
+    # Map piece names to their classes
+    piece_classes = {
+        "rook": Rook,
+        "knight": Knight,
+        "bishop": Bishop,
+        "queen": Queen,
+        "king": King,
+        "pawn": Pawn
+    }
 
-    # Taşların başlangıç dizilimi
-    piece_order = ['rook', 'knight', 'bishop', 'queen', 'king', 'bishop', 'knight', 'rook']
+    # Initial piece arrangement
+    piece_order = ["rook", "knight", "bishop", "queen", "king", "bishop", "knight", "rook"]
 
-    # Siyah taşları yerleştir
+    # Place black pieces
     for col in range(8):
-        board[0][col] = ('black', piece_order[col])
-        board[1][col] = ('black', 'pawn')
+        # Create the specific piece type for back rank
+        piece_class = piece_classes[piece_order[col]]
+        board[0][col] = piece_class("black", piece_order[col])
+        # Create pawns
+        board[1][col] = Pawn("black", "pawn")
 
-    # Beyaz taşları yerleştir
+    # Place white pieces
     for col in range(8):
-        board[7][col] = ('white', piece_order[col])
-        board[6][col] = ('white', 'pawn')
+        # Create the specific piece type for back rank
+        piece_class = piece_classes[piece_order[col]]
+        board[7][col] = piece_class("white", piece_order[col])
+        # Create pawns
+        board[6][col] = Pawn("white", "pawn")
 
     return board
 
@@ -55,21 +78,25 @@ def draw_board(screen):
             pygame.draw.rect(
                 screen,
                 color,
-                (col * SQUARE_SIZE, row * SQUARE_SIZE, SQUARE_SIZE, SQUARE_SIZE)
+                (col * SQUARE_SIZE, row * SQUARE_SIZE, SQUARE_SIZE, SQUARE_SIZE),
             )
 
 
 def draw_pieces(screen, board, pieces_images):
-    """Taşları çizer"""
+    """Draws the pieces centered in their squares"""
     for row in range(8):
         for col in range(8):
             piece = board[row][col]
             if piece:
-                color, piece_type = piece
-                # Görsel anahtarını oluştur (örn: "black_bishop")
-                piece_key = f"{color}_{piece_type}"
+                piece_key = f"{piece.color.lower()}_{piece.position}"
                 if piece_key in pieces_images:
+                    piece_image = pieces_images[piece_key]
+                    # Calculate centering offsets
+                    x_offset = (SQUARE_SIZE - piece_image.get_width()) // 2
+                    y_offset = (SQUARE_SIZE - piece_image.get_height()) // 2
+                    # Draw piece centered in square
                     screen.blit(
-                        pieces_images[piece_key],
-                        (col * SQUARE_SIZE, row * SQUARE_SIZE)
+                        piece_image,
+                        (col * SQUARE_SIZE + x_offset, row * SQUARE_SIZE + y_offset)
                     )
+
