@@ -18,6 +18,14 @@ class Game:
         self.valid_moves = []
         self.current_turn = "white"  # White starts first
         
+        # Animation state
+        self.animating_piece = None
+        self.animation_start = None
+        self.animation_end = None
+        self.animation_progress = 0
+        self.animation_piece_image = None
+        self.pending_move = None  # Store pending move data
+        
         # Game state tracking
         self.captured_pieces = {"white": [], "black": []}
         self.move_history = []
@@ -67,8 +75,108 @@ class Game:
         if len(self.move_history) > 10:  # Keep only last 10 moves
             self.move_history.pop(0)
 
+    def animate_piece_movement(self, start_pos, end_pos, piece_image):
+        """Start piece movement animation"""
+        self.animating_piece = True
+        self.animation_start = (
+            BOARD_OFFSET_X + start_pos[1] * SQUARE_SIZE,
+            BOARD_OFFSET_Y + start_pos[0] * SQUARE_SIZE
+        )
+        self.animation_end = (
+            BOARD_OFFSET_X + end_pos[1] * SQUARE_SIZE,
+            BOARD_OFFSET_Y + end_pos[0] * SQUARE_SIZE
+        )
+        self.animation_progress = 0
+        self.animation_piece_image = piece_image
+
+    def update_animation(self):
+        """Update piece animation progress"""
+        if self.animating_piece:
+            self.animation_progress += ANIMATION_SPEED / 100
+            if self.animation_progress >= 1:
+                # Animation is complete, apply the pending move
+                if self.pending_move:
+                    from_pos = self.pending_move['from']
+                    to_pos = self.pending_move['to']
+                    is_capture = self.pending_move['is_capture']
+                    captured_piece = self.pending_move['captured_piece']
+                    source_square = self.pending_move['source_square']
+                    target_square = self.pending_move['target_square']
+                    
+                    # Log the move
+                    piece_type = self.board[from_pos[0]][from_pos[1]].position.capitalize()
+                    color = self.board[from_pos[0]][from_pos[1]].color.capitalize()
+                    
+                    if is_capture:
+                        # Add captured piece to the list
+                        self.captured_pieces[self.current_turn].append(captured_piece)
+                        logger.info(
+                            f"{color} {piece_type} captures {captured_piece.color.capitalize()} "
+                            f"{captured_piece.position.capitalize()} at {target_square} "
+                            f"(moved from {source_square})"
+                        )
+                    else:
+                        logger.info(
+                            f"{color} {piece_type} moves from {source_square} to {target_square}"
+                        )
+                    
+                    # Add move to history
+                    self.add_to_move_history(
+                        self.board[from_pos[0]][from_pos[1]],
+                        source_square,
+                        target_square,
+                        is_capture,
+                        captured_piece
+                    )
+                    
+                    # Move piece
+                    self.board[to_pos[0]][to_pos[1]] = self.board[from_pos[0]][from_pos[1]]
+                    self.board[from_pos[0]][from_pos[1]] = None
+                    
+                    # Update has_moved flag
+                    self.board[to_pos[0]][to_pos[1]].has_moved = True
+                    
+                    # Play appropriate sound
+                    if is_capture:
+                        self.capture_sound.play()
+                    else:
+                        self.move_sound.play()
+                    
+                    # Switch turns after a successful move
+                    self.switch_turn()
+                    
+                    # Reset animation and move states
+                    self.pending_move = None
+                    self.selected_piece = None
+                    self.selected_square = None
+                
+                self.animating_piece = None
+                self.animation_progress = 0
+            return True
+        return False
+
+    def draw_animated_piece(self):
+        """Draw the piece that is currently being animated"""
+        if self.animating_piece and self.animation_piece_image:
+            # Calculate current position using smooth easing
+            progress = 1 - (1 - self.animation_progress) ** 3  # Cubic easing
+            current_x = self.animation_start[0] + (self.animation_end[0] - self.animation_start[0]) * progress
+            current_y = self.animation_start[1] + (self.animation_end[1] - self.animation_start[1]) * progress
+            
+            # Draw the piece at the current position
+            x_offset = (SQUARE_SIZE - self.animation_piece_image.get_width()) // 2
+            y_offset = (SQUARE_SIZE - self.animation_piece_image.get_height()) // 2
+            self.screen.blit(
+                self.animation_piece_image,
+                (current_x + x_offset, current_y + y_offset)
+            )
+
     def handle_click(self, pos):
         """Handle mouse click events"""
+        # Don't handle clicks during animation
+        if self.animating_piece:
+            return
+            
         # Convert window coordinates to board coordinates
         board_x = pos[0] - BOARD_OFFSET_X
         board_y = pos[1] - BOARD_OFFSET_Y
@@ -85,59 +193,32 @@ class Game:
         if self.selected_piece:
             # Try to move the piece
             if (row, col) in self.valid_moves:
-                # Check if target square has a piece (capture)
+                # Store move information
+                old_row, old_col = self.selected_square
                 is_capture = self.board[row][col] is not None
                 captured_piece = self.board[row][col]
-                
-                # Get source square notation
-                old_row, old_col = self.selected_square
                 source_square = self.get_square_notation(old_row, old_col)
                 
-                # Log the move
-                piece_type = self.selected_piece.position.capitalize()
-                color = self.selected_piece.color.capitalize()
-                
-                if is_capture:
-                    # Add captured piece to the list
-                    self.captured_pieces[self.current_turn].append(captured_piece)
-                    logger.info(
-                        f"{color} {piece_type} captures {captured_piece.color.capitalize()} "
-                        f"{captured_piece.position.capitalize()} at {square} "
-                        f"(moved from {source_square})"
+                # Start animation
+                piece_key = f"{self.selected_piece.color.lower()}_{self.selected_piece.position}"
+                if piece_key in self.pieces_images:
+                    self.animate_piece_movement(
+                        (old_row, old_col),
+                        (row, col),
+                        self.pieces_images[piece_key]
                     )
-                else:
-                    logger.info(
-                        f"{color} {piece_type} moves from {source_square} to {square}"
-                    )
-                
-                # Add move to history
-                self.add_to_move_history(
-                    self.selected_piece,
-                    source_square,
-                    square,
-                    is_capture,
-                    captured_piece
-                )
-                
-                # Move piece
-                self.board[row][col] = self.board[old_row][old_col]
-                self.board[old_row][old_col] = None
-                
-                # Update has_moved flag
-                self.board[row][col].has_moved = True
-                
-                # Play appropriate sound
-                if is_capture:
-                    self.capture_sound.play()
-                else:
-                    self.move_sound.play()
-                
-                # Switch turns after a successful move
-                self.switch_turn()
-                
-                # Reset selection
-                self.selected_piece = None
-                self.selected_square = None
+                    
+                    # Store move data to be applied after animation
+                    self.pending_move = {
+                        'from': (old_row, old_col),
+                        'to': (row, col),
+                        'is_capture': is_capture,
+                        'captured_piece': captured_piece,
+                        'source_square': source_square,
+                        'target_square': square
+                    }
+                    
+                    # Clear selection but keep the piece info for animation
                 self.valid_moves = []
             else:
                 # Log invalid move attempt
@@ -313,6 +394,118 @@ class Game:
         text_rect = text.get_rect(center=(x + SIDE_PANEL_WIDTH//2, timer_y + timer_height//2))
         self.screen.blit(text, text_rect)
 
+    def get_threatened_pieces(self, attacking_color):
+        """Get all pieces that are under threat from the attacking color"""
+        threatened_pieces = []
+        defending_color = "black" if attacking_color == "white" else "white"
+        
+        # For each attacking piece
+        for row in range(8):
+            for col in range(8):
+                piece = self.board[row][col]
+                if piece and piece.color == attacking_color:
+                    # Get all possible moves for this piece
+                    moves = piece.get_valid_moves(self.board, row, col)
+                    
+                    # Check if any of these moves can capture an opponent's piece
+                    for move_row, move_col in moves:
+                        target_piece = self.board[move_row][move_col]
+                        if target_piece and target_piece.color == defending_color:
+                            threatened_pieces.append((move_row, move_col))
+        
+        return threatened_pieces
+
+    def is_king_in_check(self, color):
+        """Check if the king of the given color is in check"""
+        # Find king position
+        king_pos = None
+        for row in range(8):
+            for col in range(8):
+                piece = self.board[row][col]
+                if piece and piece.position == "king" and piece.color == color:
+                    king_pos = (row, col)
+                    break
+            if king_pos:
+                break
+        
+        if not king_pos:
+            return False
+        
+        # Check if king is threatened
+        opponent_color = "black" if color == "white" else "white"
+        threatened_pieces = self.get_threatened_pieces(opponent_color)
+        return king_pos in threatened_pieces
+
+    def draw_game_over_screen(self):
+        """Draw game over screen with statistics"""
+        if not self.game_over:
+            return
+            
+        # Create semi-transparent overlay
+        overlay = pygame.Surface((WINDOW_WIDTH, WINDOW_HEIGHT), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 128))  # Semi-transparent black
+        self.screen.blit(overlay, (0, 0))
+        
+        # Create game over panel
+        panel_width = 600
+        panel_height = 400
+        panel_x = (WINDOW_WIDTH - panel_width) // 2
+        panel_y = (WINDOW_HEIGHT - panel_height) // 2
+        
+        # Draw panel background
+        panel_rect = pygame.Rect(panel_x, panel_y, panel_width, panel_height)
+        pygame.draw.rect(self.screen, PANEL_BG, panel_rect)
+        pygame.draw.rect(self.screen, PANEL_BORDER, panel_rect, 2)
+        
+        # Determine winner and color
+        if self.time_left["white"] <= 0:
+            winner = "Black"
+            color = WINNER_COLOR
+        elif self.time_left["black"] <= 0:
+            winner = "White"
+            color = WINNER_COLOR
+        
+        # Draw game over text
+        game_over_text = self.font_large.render("Game Over", True, TEXT_COLOR)
+        text_rect = game_over_text.get_rect(center=(WINDOW_WIDTH // 2, panel_y + 50))
+        self.screen.blit(game_over_text, text_rect)
+        
+        # Draw winner text
+        winner_text = self.font_large.render(f"{winner} Wins!", True, color)
+        text_rect = winner_text.get_rect(center=(WINDOW_WIDTH // 2, panel_y + 120))
+        self.screen.blit(winner_text, text_rect)
+        
+        # Draw statistics
+        y = panel_y + 180
+        spacing = 40
+        
+        # Time statistics
+        for color in ["White", "Black"]:
+            time_str = self.format_time(int(self.time_left[color.lower()]))
+            text = self.font_medium.render(f"{color}'s Time Left: {time_str}", True, TEXT_COLOR)
+            text_rect = text.get_rect(center=(WINDOW_WIDTH // 2, y))
+            self.screen.blit(text, text_rect)
+            y += spacing
+        
+        # Captured pieces statistics
+        for color in ["White", "Black"]:
+            captured = len(self.captured_pieces[color.lower()])
+            text = self.font_medium.render(f"{color}'s Captured Pieces: {captured}", True, TEXT_COLOR)
+            text_rect = text.get_rect(center=(WINDOW_WIDTH // 2, y))
+            self.screen.blit(text, text_rect)
+            y += spacing
+        
+        # Total moves
+        total_moves = len(self.move_history)
+        text = self.font_medium.render(f"Total Moves: {total_moves}", True, TEXT_COLOR)
+        text_rect = text.get_rect(center=(WINDOW_WIDTH // 2, y))
+        self.screen.blit(text, text_rect)
+        
+        # Draw "Press any key to exit" text
+        text = self.font_small.render("Press any key to exit", True, SECONDARY)
+        text_rect = text.get_rect(center=(WINDOW_WIDTH // 2, panel_y + panel_height - 40))
+        self.screen.blit(text, text_rect)
+
     def draw(self):
         """Draw the game state"""
         self.screen.fill(WHITE)
@@ -342,22 +535,71 @@ class Game:
                      SQUARE_SIZE, SQUARE_SIZE)
                 )
         
-        # Draw board coordinates with better styling
+        # Draw board coordinates
         files = 'abcdefgh'
         ranks = '87654321'
+        
+        # Draw file labels (a-h)
         for i in range(8):
-            # Draw file labels (a-h)
+            # Bottom labels
             text = self.font_small.render(files[i], True, SECONDARY)
-            self.screen.blit(text, (
-                BOARD_OFFSET_X + i * SQUARE_SIZE + SQUARE_SIZE//2 - text.get_width()//2,
-                BOARD_OFFSET_Y + BOARD_SIZE + 5
+            text_rect = text.get_rect(center=(
+                BOARD_OFFSET_X + i * SQUARE_SIZE + SQUARE_SIZE//2,
+                BOARD_OFFSET_Y + BOARD_SIZE + 25
             ))
-            # Draw rank labels (1-8)
+            self.screen.blit(text, text_rect)
+            
+            # Top labels
+            text = self.font_small.render(files[i], True, SECONDARY)
+            text_rect = text.get_rect(center=(
+                BOARD_OFFSET_X + i * SQUARE_SIZE + SQUARE_SIZE//2,
+                BOARD_OFFSET_Y - 25
+            ))
+            self.screen.blit(text, text_rect)
+        
+        # Draw rank labels (1-8)
+        for i in range(8):
+            # Left side labels
             text = self.font_small.render(ranks[i], True, SECONDARY)
-            self.screen.blit(text, (
+            text_rect = text.get_rect(center=(
                 BOARD_OFFSET_X - 25,
-                BOARD_OFFSET_Y + i * SQUARE_SIZE + SQUARE_SIZE//2 - text.get_height()//2
+                BOARD_OFFSET_Y + i * SQUARE_SIZE + SQUARE_SIZE//2
             ))
+            self.screen.blit(text, text_rect)
+            
+            # Right side labels
+            text = self.font_small.render(ranks[i], True, SECONDARY)
+            text_rect = text.get_rect(center=(
+                BOARD_OFFSET_X + BOARD_SIZE + 25,
+                BOARD_OFFSET_Y + i * SQUARE_SIZE + SQUARE_SIZE//2
+            ))
+            self.screen.blit(text, text_rect)
+        
+        # Draw threatened pieces
+        opponent_color = "black" if self.current_turn == "white" else "white"
+        threatened_pieces = self.get_threatened_pieces(opponent_color)
+        
+        for row, col in threatened_pieces:
+            s = pygame.Surface((SQUARE_SIZE, SQUARE_SIZE), pygame.SRCALPHA)
+            pygame.draw.rect(s, THREATENED_SQUARE, s.get_rect())
+            self.screen.blit(s, (
+                BOARD_OFFSET_X + col * SQUARE_SIZE,
+                BOARD_OFFSET_Y + row * SQUARE_SIZE
+            ))
+        
+        # Highlight king in check
+        if self.is_king_in_check(self.current_turn):
+            # Find king position
+            for row in range(8):
+                for col in range(8):
+                    piece = self.board[row][col]
+                    if piece and piece.position == "king" and piece.color == self.current_turn:
+                        s = pygame.Surface((SQUARE_SIZE, SQUARE_SIZE), pygame.SRCALPHA)
+                        pygame.draw.rect(s, KING_DANGER, s.get_rect())
+                        self.screen.blit(s, (
+                            BOARD_OFFSET_X + col * SQUARE_SIZE,
+                            BOARD_OFFSET_Y + row * SQUARE_SIZE
+                        ))
         
         # Highlight selected square with semi-transparent overlay
         if self.selected_square:
@@ -390,6 +632,10 @@ class Game:
                 if piece:
                     piece_key = f"{piece.color.lower()}_{piece.position}"
                     if piece_key in self.pieces_images:
+                        # Skip drawing if this piece is being animated
+                        if self.animating_piece and (row, col) == self.selected_square:
+                            continue
+                        
                         piece_image = self.pieces_images[piece_key]
                         x_offset = (SQUARE_SIZE - piece_image.get_width()) // 2
                         y_offset = (SQUARE_SIZE - piece_image.get_height()) // 2
@@ -399,6 +645,9 @@ class Game:
                              BOARD_OFFSET_Y + row * SQUARE_SIZE + y_offset)
                         )
         
+        # Draw the animated piece on top
+        self.draw_animated_piece()
+        
         # Draw turn indicator with modern style
         turn_text = f"{self.current_turn.capitalize()}'s Turn"
         text_surface = self.font_large.render(turn_text, True, ACTIVE_COLOR)
@@ -407,6 +656,10 @@ class Game:
         
         # Draw move history
         self.draw_move_history()
+        
+        # Draw game over screen if game is over
+        if self.game_over:
+            self.draw_game_over_screen()
         
         pygame.display.flip()
 
@@ -418,15 +671,22 @@ class Game:
                 if event.type == pygame.QUIT:
                     logger.info("Game ended")
                     running = False
+                elif event.type == pygame.KEYDOWN and self.game_over:
+                    running = False
                 elif event.type == pygame.MOUSEBUTTONDOWN and not self.game_over:
                     if event.button == 1:  # Left click
                         self.handle_click(event.pos)
             
-            # Update timer
-            self.update_timer()
+            # Update animation
+            if self.update_animation():
+                # Only update timer and game state when not animating
+                pass
+            else:
+                # Update timer
+                self.update_timer()
             
             # Draw game state
             self.draw()
-            self.clock.tick(FPS_LIMIT)
+            self.clock.tick(ANIMATION_FPS)
         
         pygame.quit()

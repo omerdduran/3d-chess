@@ -32,6 +32,13 @@ DARK_SQUARE = (125, 135, 150)   # Medium blue-gray
 HIGHLIGHT = (87, 204, 153)      # Soft green
 POSSIBLE_MOVE = (108, 117, 125)  # Base color for move indicators
 POSSIBLE_MOVE_ALPHA = (108, 117, 125, 100)  # Semi-transparent version for overlays
+THREATENED_SQUARE = (231, 76, 60, 80)  # Semi-transparent red for threatened squares
+KING_DANGER = (192, 57, 43, 120)  # Darker red for king in check
+
+# Game Over Colors
+WINNER_COLOR = (46, 204, 113)  # Green for winner
+LOSER_COLOR = (231, 76, 60)    # Red for loser
+DRAW_COLOR = (52, 152, 219)    # Blue for draw
 
 # UI Colors
 TEXT_COLOR = (33, 37, 41)     # Dark gray for text
@@ -51,3 +58,9 @@ HISTORY_PANEL_HEIGHT = 180    # Taller history panel
 
 # Piece Settings
 PIECE_SCALE = 0.90           # Scale pieces to 90% of square size
+
+# Animation Settings
+ANIMATION_SPEED = 8  # Pixels per frame
+ANIMATION_FPS = 60   # Animation frame rate
+MIN_ANIMATION_SPEED = 2  # Minimum speed at the end of animation
+ANIMATION_SMOOTHING = 0.85  # Smoothing factor for animation (0-1)
