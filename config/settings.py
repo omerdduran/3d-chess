@@ -1,4 +1,4 @@
-GAME_NAME = '3D Chess Game'
+GAME_NAME = 'Chess Game'
 
 # Window dimensions
 WINDOW_WIDTH = 1200  # Increased width for more space
@@ -64,3 +64,42 @@ ANIMATION_SPEED = 8  # Pixels per frame
 ANIMATION_FPS = 60   # Animation frame rate
 MIN_ANIMATION_SPEED = 2  # Minimum speed at the end of animation
 ANIMATION_SMOOTHING = 0.85  # Smoothing factor for animation (0-1)
+
+# Promotion Settings
+PROMOTION_PANEL_WIDTH = 400
+PROMOTION_PANEL_HEIGHT = 120
+PROMOTION_PIECE_SIZE = 80
+PROMOTION_BG = (248, 249, 250)  # Light background
+PROMOTION_BORDER = (222, 226, 230)  # Border color
+PROMOTION_HOVER = (233, 236, 239)  # Hover color
+
+# Menu Settings
+MENU_BG = (248, 249, 250)  # Light background
+MENU_BUTTON_BG = (255, 255, 255, 230)  # Semi-transparent white
+MENU_BUTTON_HOVER = (255, 255, 255, 255)  # Full white on hover
+MENU_BUTTON_ACTIVE = (64, 169, 255)  # Active button color
+MENU_BUTTON_WIDTH = 300
+MENU_BUTTON_HEIGHT = 60
+MENU_BUTTON_SPACING = 20  # Space between buttons
+MENU_TITLE_SIZE = 82  # Slightly larger title
+MENU_BUTTON_TEXT_SIZE = 36
+MENU_PANEL_ALPHA = 180  # Transparency for menu panel
+MENU_TITLE_COLOR = (33, 37, 41)  # Dark text for title
+MENU_SUBTITLE_SIZE = 28  # Size for subtitle text
+MENU_BUTTON_SHADOW = (0, 0, 0, 30)  # Soft shadow for buttons
+MENU_BUTTON_BORDER_RADIUS = 10  # Rounded corners for buttons
+
+# Menu button texts
+MENU_BUTTON_NEW_GAME = "New Game"
+MENU_BUTTON_SAVE_GAME = "Save Game"
+MENU_BUTTON_LOAD_GAME = "Load Game"
+MENU_BUTTON_QUIT = "Quit"
+
+# Menu button colors
+MENU_BUTTON_SAVE = (46, 204, 113)  # Green for save
+MENU_BUTTON_LOAD = (52, 152, 219)  # Blue for load
+
+# Game saving/loading settings
+SAVE_DIR = "saved_games"
+SAVE_MESSAGE_DURATION = 2  # seconds
+LOAD_MESSAGE_DURATION = 2  # seconds

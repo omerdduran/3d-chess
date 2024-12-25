@@ -2,6 +2,11 @@ import pygame
 from src.board.board import *
 from config.settings import *
 from src.utils.logger import logger
+from src.pieces.queen import Queen
+from src.pieces.rook import Rook
+from src.pieces.bishop import Bishop
+from src.pieces.knight import Knight
+from src.utils.game_saver import GameSaver
 
 class Game:
     def __init__(self):
@@ -13,6 +18,7 @@ class Game:
         self.board = create_board()
         self.pieces_images = load_pieces()
         
+        # Game state
         self.selected_piece = None
         self.selected_square = None
         self.valid_moves = []
@@ -24,9 +30,9 @@ class Game:
         self.animation_end = None
         self.animation_progress = 0
         self.animation_piece_image = None
-        self.pending_move = None  # Store pending move data
+        self.pending_move = None
         
-        # Game state tracking
+        # Game tracking
         self.captured_pieces = {"white": [], "black": []}
         self.move_history = []
         self.move_count = 1
@@ -45,7 +51,109 @@ class Game:
         self.move_sound = pygame.mixer.Sound('assets/sounds/move.mp3')
         self.capture_sound = pygame.mixer.Sound('assets/sounds/capture.mp3')
         
+        # Promotion state
+        self.promotion_pending = False
+        self.promotion_square = None
+        self.promotion_color = None
+        self.promotion_pieces = ["queen", "rook", "bishop", "knight"]
+
+        # Initialize game saver
+        self.game_saver = GameSaver()
+        
         logger.info("New chess game started - White's turn")
+
+    def save_current_game(self):
+        """Save the current game state"""
+        filename = self.game_saver.save_game(self)
+        if filename:
+            logger.info(f"Game saved as {filename}")
+            return True
+        return False
+
+    def load_saved_game(self, filename):
+        """Load a saved game state"""
+        save_data = self.game_saver.load_game(filename)
+        if not save_data:
+            return False
+
+        try:
+            # Load board state
+            self.board = self._deserialize_board(save_data["board_state"])
+            self.current_turn = save_data["current_turn"]
+            self.time_left = save_data["time_left"]
+            self.move_history = save_data["move_history"]
+            self.captured_pieces = self._deserialize_captured_pieces(save_data["captured_pieces"])
+            self.move_count = save_data["move_count"]
+            self.game_over = save_data["game_over"]
+
+            # Reset selection and animation states
+            self.selected_piece = None
+            self.selected_square = None
+            self.valid_moves = []
+            self.animating_piece = None
+            self.pending_move = None
+            self.promotion_pending = False
+
+            logger.info("Game loaded successfully")
+            return True
+
+        except Exception as e:
+            logger.error(f"Error loading game state: {str(e)}")
+            return False
+
+    def _deserialize_board(self, board_state):
+        """Convert saved board state back to piece objects"""
+        piece_classes = {
+            "pawn": Pawn,
+            "rook": Rook,
+            "knight": Knight,
+            "bishop": Bishop,
+            "queen": Queen,
+            "king": King
+        }
+
+        board = [[None for _ in range(8)] for _ in range(8)]
+        for row in range(8):
+            for col in range(8):
+                piece_data = board_state[row][col]
+                if piece_data and isinstance(piece_data, dict):  # Check if it's a piece (dictionary)
+                    piece_class = piece_classes[piece_data['position']]
+                    piece = piece_class(piece_data['color'], piece_data['position'])
+                    if 'has_moved' in piece_data:
+                        piece.has_moved = piece_data['has_moved']
+                    board[row][col] = piece
+                else:
+                    board[row][col] = None  # Empty square
+
+        return board
+
+    def _deserialize_captured_pieces(self, captured_data):
+        """Convert saved captured pieces back to piece objects"""
+        piece_classes = {
+            "pawn": Pawn,
+            "rook": Rook,
+            "knight": Knight,
+            "bishop": Bishop,
+            "queen": Queen,
+            "king": King
+        }
+
+        captured = {"white": [], "black": []}
+        for color in ["white", "black"]:
+            for piece_data in captured_data[color]:
+                piece_class = piece_classes[piece_data['position']]
+                piece = piece_class(piece_data['color'], piece_data['position'])
+                captured[color].append(piece)
+
+        return captured
+
+    def get_saved_games(self):
+        """Get list of saved games"""
+        return self.game_saver.list_saved_games()
+
+    def delete_saved_game(self, filename):
+        """Delete a saved game"""
+        return self.game_saver.delete_save(filename)
 
     def get_square_notation(self, row, col):
         """Convert row and column to chess notation (e.g., 'e4')"""
@@ -57,6 +165,11 @@ class Game:
         """Switch the current turn between white and black"""
         self.current_turn = "black" if self.current_turn == "white" else "white"
         logger.info(f"{self.current_turn.capitalize()}'s turn")
+        
+        # Reset selection and valid moves
+        self.selected_piece = None
+        self.selected_square = None
+        self.valid_moves = []
 
     def add_to_move_history(self, piece, source, target, is_capture=False, captured_piece=None):
         """Add a move to the history"""
@@ -145,6 +258,9 @@ class Game:
                     # Switch turns after a successful move
                     self.switch_turn()
                     
+                    # Check for checkmate
+                    self.update_game_state()
+                    
                     # Reset animation and move states
                     self.pending_move = None
                     self.selected_piece = None
@@ -173,6 +289,13 @@ class Game:
 
     def handle_click(self, pos):
         """Handle mouse click events"""
+        # Handle promotion selection if pending
+        if self.promotion_pending:
+            if self.handle_promotion(pos):
+                # Promotion was handled, switch turns
+                self.switch_turn()
+            return
+            
         # Don't handle clicks during animation
         if self.animating_piece:
             return
@@ -193,13 +316,46 @@ class Game:
         if self.selected_piece:
             # Try to move the piece
             if (row, col) in self.valid_moves:
-                # Store move information
                 old_row, old_col = self.selected_square
-                is_capture = self.board[row][col] is not None
-                captured_piece = self.board[row][col]
-                source_square = self.get_square_notation(old_row, old_col)
                 
-                # Start animation
+                # Check if the move is legal (doesn't put own king in check)
+                if not self.simulate_move((old_row, old_col), (row, col)):
+                    logger.warning(
+                        f"Invalid move attempted to {square} - would put own king in check"
+                    )
+                    self.selected_piece = None
+                    self.selected_square = None
+                    self.valid_moves = []
+                    return
+                
+                # Check if this move will result in a pawn promotion
+                if self.needs_promotion(self.selected_piece, row):
+                    # Store promotion information
+                    self.promotion_pending = True
+                    self.promotion_square = (row, col)
+                    self.promotion_color = self.selected_piece.color
+                    
+                    # Store move data for after promotion
+                    self.pending_move = {
+                        'from': (old_row, old_col),
+                        'to': (row, col),
+                        'is_capture': self.board[row][col] is not None,
+                        'captured_piece': self.board[row][col],
+                        'source_square': self.get_square_notation(old_row, old_col),
+                        'target_square': square
+                    }
+                    
+                    # Move the pawn to the promotion square
+                    self.board[row][col] = self.board[old_row][old_col]
+                    self.board[old_row][old_col] = None
+                    
+                    # Clear selection but don't switch turns yet
+                    self.selected_piece = None
+                    self.selected_square = None
+                    self.valid_moves = []
+                    return
+                
+                # Start normal move animation
                 piece_key = f"{self.selected_piece.color.lower()}_{self.selected_piece.position}"
                 if piece_key in self.pieces_images:
                     self.animate_piece_movement(
@@ -212,14 +368,14 @@ class Game:
                     self.pending_move = {
                         'from': (old_row, old_col),
                         'to': (row, col),
-                        'is_capture': is_capture,
-                        'captured_piece': captured_piece,
-                        'source_square': source_square,
+                        'is_capture': self.board[row][col] is not None,
+                        'captured_piece': self.board[row][col],
+                        'source_square': self.get_square_notation(old_row, old_col),
                         'target_square': square
                     }
                     
                     # Clear selection but keep the piece info for animation
-                self.valid_moves = []
+                    self.valid_moves = []
             else:
                 # Log invalid move attempt
                 logger.warning(
@@ -240,6 +396,11 @@ class Game:
                 self.selected_square = (row, col)
                 # Get valid moves for the selected piece
                 self.valid_moves = piece.get_valid_moves(self.board, row, col)
+                # Filter out moves that would put own king in check
+                self.valid_moves = [
+                    move for move in self.valid_moves 
+                    if self.simulate_move((row, col), move)
+                ]
                 # Log piece selection and valid moves
                 valid_squares = [self.get_square_notation(r, c) for r, c in self.valid_moves]
                 logger.info(
@@ -411,7 +572,19 @@ class Game:
                     for move_row, move_col in moves:
                         target_piece = self.board[move_row][move_col]
                         if target_piece and target_piece.color == defending_color:
-                            threatened_pieces.append((move_row, move_col))
+                            # Simulate the move to check if it's legal (doesn't put own king in check)
+                            # Save current board state
+                            temp_piece = self.board[move_row][move_col]
+                            self.board[move_row][move_col] = self.board[row][col]
+                            self.board[row][col] = None
+                            
+                            # Check if the move is legal (doesn't put own king in check)
+                            if not self.is_king_in_check(attacking_color):
+                                threatened_pieces.append((move_row, move_col))
+                            
+                            # Restore board state
+                            self.board[row][col] = self.board[move_row][move_col]
+                            self.board[move_row][move_col] = temp_piece
         
         return threatened_pieces
 
@@ -431,10 +604,69 @@ class Game:
         if not king_pos:
             return False
         
-        # Check if king is threatened
+        # Check if any opponent piece can attack the king
         opponent_color = "black" if color == "white" else "white"
-        threatened_pieces = self.get_threatened_pieces(opponent_color)
-        return king_pos in threatened_pieces
+        for row in range(8):
+            for col in range(8):
+                piece = self.board[row][col]
+                if piece and piece.color == opponent_color:
+                    moves = piece.get_valid_moves(self.board, row, col)
+                    if king_pos in moves:
+                        return True
+        return False
+
+    def simulate_move(self, from_pos, to_pos):
+        """Simulate a move and return if it's legal"""
+        # Save current board state
+        temp_piece = self.board[to_pos[0]][to_pos[1]]
+        # Make move
+        self.board[to_pos[0]][to_pos[1]] = self.board[from_pos[0]][from_pos[1]]
+        self.board[from_pos[0]][from_pos[1]] = None
+        
+        # Check if king is in check after move
+        color = self.board[to_pos[0]][to_pos[1]].color
+        is_legal = not self.is_king_in_check(color)
+        
+        # Restore board state
+        self.board[from_pos[0]][from_pos[1]] = self.board[to_pos[0]][to_pos[1]]
+        self.board[to_pos[0]][to_pos[1]] = temp_piece
+        
+        return is_legal
+
+    def is_checkmate(self, color):
+        """Check if the given color is in checkmate"""
+        # If king is not in check, it's not checkmate
+        if not self.is_king_in_check(color):
+            return False
+        
+        # Try all possible moves for all pieces
+        for row in range(8):
+            for col in range(8):
+                piece = self.board[row][col]
+                if piece and piece.color == color:
+                    # Get all possible moves for this piece
+                    moves = piece.get_valid_moves(self.board, row, col)
+                    
+                    # Try each move
+                    for move_row, move_col in moves:
+                        # If any move gets out of check, it's not checkmate
+                        if self.simulate_move((row, col), (move_row, move_col)):
+                            return False
+        
+        # If no legal moves found, it's checkmate
+        return True
+
+    def update_game_state(self):
+        """Update game state including check and checkmate conditions"""
+        if self.is_king_in_check(self.current_turn):
+            logger.info(f"{self.current_turn.capitalize()} is in check!")
+            
+            if self.is_checkmate(self.current_turn):
+                self.game_over = True
+                winner = "Black" if self.current_turn == "white" else "White"
+                logger.info(f"Checkmate! {winner} wins!")
+                return True
+        return False
 
     def draw_game_over_screen(self):
         """Draw game over screen with statistics"""
@@ -457,21 +689,27 @@ class Game:
         pygame.draw.rect(self.screen, PANEL_BG, panel_rect)
         pygame.draw.rect(self.screen, PANEL_BORDER, panel_rect, 2)
         
-        # Determine winner and color
+        # Determine winner and reason
         if self.time_left["white"] <= 0:
             winner = "Black"
-            color = WINNER_COLOR
+            reason = "by timeout"
         elif self.time_left["black"] <= 0:
             winner = "White"
-            color = WINNER_COLOR
+            reason = "by timeout"
+        elif self.is_checkmate(self.current_turn):
+            winner = "Black" if self.current_turn == "white" else "White"
+            reason = "by checkmate"
+        else:
+            winner = "Unknown"
+            reason = ""
         
         # Draw game over text
         game_over_text = self.font_large.render("Game Over", True, TEXT_COLOR)
         text_rect = game_over_text.get_rect(center=(WINDOW_WIDTH // 2, panel_y + 50))
         self.screen.blit(game_over_text, text_rect)
         
-        # Draw winner text
-        winner_text = self.font_large.render(f"{winner} Wins!", True, color)
+        # Draw winner text with reason
+        winner_text = self.font_large.render(f"{winner} Wins {reason}!", True, WINNER_COLOR)
         text_rect = winner_text.get_rect(center=(WINDOW_WIDTH // 2, panel_y + 120))
         self.screen.blit(winner_text, text_rect)
         
@@ -661,6 +899,21 @@ class Game:
         if self.game_over:
             self.draw_game_over_screen()
         
+        # Draw promotion panel on top if needed
+        if self.promotion_pending:
+            self.draw_promotion_panel()
+        
+        # Draw temporary message if exists
+        if hasattr(self, 'message') and hasattr(self, 'message_start_time'):
+            current_time = pygame.time.get_ticks()
+            if current_time - self.message_start_time < self.message_duration:
+                text = self.font_large.render(self.message, True, PRIMARY)
+                text_rect = text.get_rect(center=(WINDOW_WIDTH // 2, 80))
+                self.screen.blit(text, text_rect)
+            else:
+                delattr(self, 'message')
+                delattr(self, 'message_start_time')
+
         pygame.display.flip()
 
     def run(self):
@@ -671,8 +924,28 @@ class Game:
                 if event.type == pygame.QUIT:
                     logger.info("Game ended")
                     running = False
-                elif event.type == pygame.KEYDOWN and self.game_over:
-                    running = False
+                elif event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_ESCAPE:
+                        # Return to menu when ESC is pressed
+                        logger.info("Returning to main menu")
+                        return "menu"
+                    elif event.key == pygame.K_s and pygame.key.get_mods() & pygame.KMOD_CTRL:
+                        # Ctrl+S to save game
+                        if self.save_current_game():
+                            self._show_message("Game saved successfully!", 2)
+                        else:
+                            self._show_message("Failed to save game!", 2)
+                    elif event.key == pygame.K_l and pygame.key.get_mods() & pygame.KMOD_CTRL:
+                        # Ctrl+L to load game
+                        saved_games = self.get_saved_games()
+                        if saved_games:
+                            # Load the most recent save
+                            if self.load_saved_game(saved_games[0]['filename']):
+                                self._show_message("Game loaded successfully!", 2)
+                            else:
+                                self._show_message("Failed to load game!", 2)
+                        else:
+                            self._show_message("No saved games found!", 2)
                 elif event.type == pygame.MOUSEBUTTONDOWN and not self.game_over:
                     if event.button == 1:  # Left click
                         self.handle_click(event.pos)
@@ -690,3 +963,117 @@ class Game:
             self.clock.tick(ANIMATION_FPS)
         
         pygame.quit()
+        return "quit"
+
+    def needs_promotion(self, piece, row):
+        """Check if a pawn needs promotion"""
+        return (piece.position == "pawn" and 
+                ((piece.color == "white" and row == 0) or 
+                 (piece.color == "black" and row == 7)))
+
+    def handle_promotion(self, pos):
+        """Handle click events during pawn promotion"""
+        if not self.promotion_pending:
+            return False
+            
+        # Calculate promotion panel position
+        panel_x = (WINDOW_WIDTH - PROMOTION_PANEL_WIDTH) // 2
+        panel_y = (WINDOW_HEIGHT - PROMOTION_PANEL_HEIGHT) // 2
+        
+        # Check if click is within panel
+        if not (panel_x <= pos[0] <= panel_x + PROMOTION_PANEL_WIDTH and
+                panel_y <= pos[1] <= panel_y + PROMOTION_PANEL_HEIGHT):
+            return False
+            
+        # Calculate which piece was clicked
+        piece_width = PROMOTION_PANEL_WIDTH // len(self.promotion_pieces)
+        piece_index = (pos[0] - panel_x) // piece_width
+        
+        if 0 <= piece_index < len(self.promotion_pieces):
+            # Get the chosen piece type
+            chosen_piece = self.promotion_pieces[piece_index]
+            row, col = self.promotion_square
+            
+            # Create the new piece
+            piece_classes = {
+                "queen": Queen,
+                "rook": Rook,
+                "bishop": Bishop,
+                "knight": Knight
+            }
+            
+            # Replace the pawn with the chosen piece
+            self.board[row][col] = piece_classes[chosen_piece](self.promotion_color, chosen_piece)
+            
+            # Log the promotion
+            logger.info(
+                f"Pawn promoted to {chosen_piece.capitalize()} at "
+                f"{self.get_square_notation(row, col)}"
+            )
+            
+            # Clear promotion state
+            self.promotion_pending = False
+            self.promotion_square = None
+            self.promotion_color = None
+            
+            return True
+        
+        return False
+
+    def draw_promotion_panel(self):
+        """Draw the pawn promotion selection panel"""
+        if not self.promotion_pending:
+            return
+            
+        # Create semi-transparent overlay
+        overlay = pygame.Surface((WINDOW_WIDTH, WINDOW_HEIGHT), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 128))
+        self.screen.blit(overlay, (0, 0))
+        
+        # Draw promotion panel
+        panel_x = (WINDOW_WIDTH - PROMOTION_PANEL_WIDTH) // 2
+        panel_y = (WINDOW_HEIGHT - PROMOTION_PANEL_HEIGHT) // 2
+        panel_rect = pygame.Rect(panel_x, panel_y, PROMOTION_PANEL_WIDTH, PROMOTION_PANEL_HEIGHT)
+        
+        # Draw panel background
+        pygame.draw.rect(self.screen, PROMOTION_BG, panel_rect)
+        pygame.draw.rect(self.screen, PROMOTION_BORDER, panel_rect, 2)
+        
+        # Draw promotion pieces
+        piece_width = PROMOTION_PANEL_WIDTH // len(self.promotion_pieces)
+        
+        # Get mouse position for hover effect
+        mouse_pos = pygame.mouse.get_pos()
+        
+        for i, piece_type in enumerate(self.promotion_pieces):
+            piece_x = panel_x + (i * piece_width)
+            piece_rect = pygame.Rect(piece_x, panel_y, piece_width, PROMOTION_PANEL_HEIGHT)
+            
+            # Draw hover effect
+            if piece_rect.collidepoint(mouse_pos):
+                pygame.draw.rect(self.screen, PROMOTION_HOVER, piece_rect)
+            
+            # Draw piece
+            piece_key = f"{self.promotion_color}_{piece_type}"
+            if piece_key in self.pieces_images:
+                piece_image = pygame.transform.smoothscale(
+                    self.pieces_images[piece_key],
+                    (PROMOTION_PIECE_SIZE, PROMOTION_PIECE_SIZE)
+                )
+                
+                # Center the piece in its section
+                image_x = piece_x + (piece_width - PROMOTION_PIECE_SIZE) // 2
+                image_y = panel_y + (PROMOTION_PANEL_HEIGHT - PROMOTION_PIECE_SIZE) // 2
+                
+                self.screen.blit(piece_image, (image_x, image_y))
+                
+                # Draw piece name
+                text = self.font_small.render(piece_type.capitalize(), True, TEXT_COLOR)
+                text_rect = text.get_rect(center=(piece_x + piece_width//2, panel_y + PROMOTION_PANEL_HEIGHT - 20))
+                self.screen.blit(text, text_rect)
+
+    def _show_message(self, message, duration):
+        """Show a temporary message on screen"""
+        self.message = message
+        self.message_start_time = pygame.time.get_ticks()
+        self.message_duration = duration * 1000  # Convert to milliseconds

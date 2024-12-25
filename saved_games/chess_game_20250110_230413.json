@@ -1,0 +1,233 @@
+{
+    "board_state": [
+        [
+            {
+                "position": "rook",
+                "color": "black",
+                "has_moved": false
+            },
+            {
+                "position": "knight",
+                "color": "black",
+                "has_moved": false
+            },
+            {
+                "position": "bishop",
+                "color": "black",
+                "has_moved": false
+            },
+            {
+                "position": "queen",
+                "color": "black",
+                "has_moved": false
+            },
+            {
+                "position": "king",
+                "color": "black",
+                "has_moved": false
+            },
+            {
+                "position": "bishop",
+                "color": "black",
+                "has_moved": false
+            },
+            {
+                "position": "knight",
+                "color": "black",
+                "has_moved": false
+            },
+            {
+                "position": "rook",
+                "color": "black",
+                "has_moved": false
+            }
+        ],
+        [
+            "",
+            {
+                "position": "pawn",
+                "color": "black",
+                "has_moved": false
+            },
+            "",
+            {
+                "position": "pawn",
+                "color": "black",
+                "has_moved": false
+            },
+            "",
+            {
+                "position": "pawn",
+                "color": "black",
+                "has_moved": false
+            },
+            {
+                "position": "pawn",
+                "color": "black",
+                "has_moved": false
+            },
+            ""
+        ],
+        [
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            ""
+        ],
+        [
+            {
+                "position": "pawn",
+                "color": "black",
+                "has_moved": true
+            },
+            "",
+            {
+                "position": "pawn",
+                "color": "black",
+                "has_moved": true
+            },
+            "",
+            {
+                "position": "pawn",
+                "color": "black",
+                "has_moved": true
+            },
+            "",
+            "",
+            {
+                "position": "pawn",
+                "color": "black",
+                "has_moved": true
+            }
+        ],
+        [
+            {
+                "position": "pawn",
+                "color": "white",
+                "has_moved": true
+            },
+            "",
+            {
+                "position": "pawn",
+                "color": "white",
+                "has_moved": true
+            },
+            "",
+            {
+                "position": "pawn",
+                "color": "white",
+                "has_moved": true
+            },
+            "",
+            {
+                "position": "pawn",
+                "color": "white",
+                "has_moved": true
+            },
+            ""
+        ],
+        [
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            ""
+        ],
+        [
+            "",
+            {
+                "position": "pawn",
+                "color": "white",
+                "has_moved": false
+            },
+            "",
+            {
+                "position": "pawn",
+                "color": "white",
+                "has_moved": false
+            },
+            "",
+            {
+                "position": "pawn",
+                "color": "white",
+                "has_moved": false
+            },
+            "",
+            {
+                "position": "pawn",
+                "color": "white",
+                "has_moved": false
+            }
+        ],
+        [
+            {
+                "position": "rook",
+                "color": "white",
+                "has_moved": false
+            },
+            {
+                "position": "knight",
+                "color": "white",
+                "has_moved": false
+            },
+            {
+                "position": "bishop",
+                "color": "white",
+                "has_moved": false
+            },
+            {
+                "position": "queen",
+                "color": "white",
+                "has_moved": false
+            },
+            {
+                "position": "king",
+                "color": "white",
+                "has_moved": false
+            },
+            {
+                "position": "bishop",
+                "color": "white",
+                "has_moved": false
+            },
+            {
+                "position": "knight",
+                "color": "white",
+                "has_moved": false
+            },
+            {
+                "position": "rook",
+                "color": "white",
+                "has_moved": false
+            }
+        ]
+    ],
+    "current_turn": "white",
+    "time_left": {
+        "white": 36.736999999997416,
+        "black": 53.61299999999961
+    },
+    "move_history": [
+        "1. White Pawn e2-e4",
+        "1. Black Pawn c7-c5",
+        "2. White Pawn g2-g4",
+        "2. Black Pawn e7-e5",
+        "3. White Pawn c2-c4",
+        "3. Black Pawn a7-a5",
+        "4. White Pawn a2-a4",
+        "4. Black Pawn h7-h5"
+    ],
+    "captured_pieces": {
+        "white": [],
+        "black": []
+    },
+    "move_count": 5,
+    "game_over": false
+}
