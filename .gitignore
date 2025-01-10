@@ -170,4 +170,7 @@ poetry.toml
 # LSP config files
 pyrightconfig.json
 
+# Saved games
+saved_games/
+
 # End of https://www.toptal.com/developers/gitignore/api/python
